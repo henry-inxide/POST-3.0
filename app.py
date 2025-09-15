@@ -20,10 +20,6 @@ headers = {
 logs = []
 tasks = {}  # {task_id: {"thread": Thread, "paused": bool, "stop": bool, "info": {...}}}
 
-def log_message(msg):
-    logs.append(msg)
-    print(msg)
-
 @app.route('/')
 def index():
     return render_template_string('''
@@ -35,11 +31,14 @@ def index():
     <title>Henry Post Tool</title>
     <style>
         body {background: linear-gradient(to right, #9932CC, #FF00FF); font-family: Arial, sans-serif; color: white;}
-        .container {background-color: rgba(0,0,0,0.7); max-width: 600px; margin: 20px auto; padding: 20px; border-radius: 10px;}
-        input, select {width: 100%; padding: 10px; margin: 5px 0; border-radius: 5px; border: none;}
-        button {background: #FF1493; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;}
-        .threads-btn {background: #00CED1; margin-top: 10px;}
-        pre {background: black; color: lime; padding: 10px; height: 200px; overflow-y: auto; border-radius: 10px;}
+        .container {background-color: rgba(0,0,0,0.7); max-width: 650px; margin: 30px auto; padding: 25px; border-radius: 12px;}
+        input, select {width: 100%; padding: 12px; margin: 6px 0; border-radius: 6px; border: none;}
+        .button-group {display:flex; flex-direction:column; align-items:center; margin-top:15px;}
+        .button-group button {width: 80%; max-width: 350px; padding: 12px; margin: 8px 0; font-size: 16px; font-weight:bold; border:none; border-radius: 8px; cursor:pointer; transition: transform 0.2s ease;}
+        .button-group button:hover {transform: scale(1.05);}
+        .start-btn {background: #FF1493; color: white;}
+        .threads-btn {background: #00CED1; color:white;}
+        pre {background: black; color: lime; padding: 12px; height: 200px; overflow-y: auto; border-radius: 10px; margin-top: 15px;}
         #threadPanel {display:none; background:#111; padding:10px; border-radius:10px; margin-top:10px;}
         .thread-item {display:flex; justify-content:space-between; align-items:center; background:#222; margin:5px 0; padding:5px 10px; border-radius:8px;}
         .controls button {margin-left:5px;}
@@ -47,7 +46,7 @@ def index():
 </head>
 <body>
     <div class="container">
-        <h2 style="text-align:center;">🚀 Henry Post Tool</h2>
+        <h2 style="text-align:center; margin-bottom: 20px;">🚀 Henry Post Tool</h2>
         <form action="/" method="post" enctype="multipart/form-data">
             <label>Post ID</label>
             <input type="text" name="threadId" required>
@@ -73,13 +72,15 @@ def index():
             <label>Delay (Seconds)</label>
             <input type="number" name="time" min="1" required>
 
-            <button type="submit">🚀 Start</button>
+            <div class="button-group">
+                <button type="submit" class="start-btn">🚀 Start Commenting</button>
+                <button type="button" class="threads-btn" onclick="toggleThreads()">📋 Show Running Threads</button>
+            </div>
         </form>
 
-        <button class="threads-btn" onclick="toggleThreads()">📋 Show Running Threads</button>
         <div id="threadPanel"></div>
 
-        <h3>📜 Live Logs</h3>
+        <h3 style="text-align:center; margin-top:20px;">📜 Live Logs</h3>
         <pre id="logs"></pre>
     </div>
 

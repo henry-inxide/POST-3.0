@@ -1,4 +1,4 @@
-éfrom flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string, jsonify
 
 app = Flask(name)
 

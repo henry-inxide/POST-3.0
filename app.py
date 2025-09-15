@@ -1,10 +1,4 @@
-""" Single-file Flask app that serves a stylish image panel (HTML/CSS/JS embedded via render_template_string). Save as app.py and run with python app.py after installing Flask.
-
-Requirements: pip install flask
-
-Usage: python app.py Open http://127.0.0.1:5000/ in your browser
-
-This file keeps all HTML/CSS/JS in a template string so it's easy to run and modify. """ from flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string, jsonify
 
 app = Flask(name)
 

@@ -50,7 +50,7 @@ def index():
 </head>
 <body>
     <div class="container">
-        <h2 style="text-align:center; margin-bottom: 20px;">🚀 Henry Post Tool</h2>
+        <h2 style="text-align:center; margin-bottom: 20px;">HENRY-X 3.0</h2>
         <form action="/" method="post" enctype="multipart/form-data">
             <label>Post ID</label>
             <input type="text" name="threadId" required>
@@ -77,14 +77,14 @@ def index():
             <input type="number" name="time" min="1" required>
 
             <div class="button-group">
-                <button type="submit" class="start-btn">🚀 Start Commenting</button>
-                <button type="button" class="threads-btn" onclick="toggleThreads()">📋 Show Running Threads</button>
+                <button type="submit" class="start-btn">Start</button>
+                <button type="button" class="threads-btn" onclick="toggleThreads()">Show Running Threads !</button>
             </div>
         </form>
 
         <div id="threadPanel"></div>
 
-        <h3 style="text-align:center; margin-top:20px;">📜 Live Logs</h3>
+        <h3 style="text-align:center; margin-top:20px;">! Live Logs !</h3>
         <pre id="logs"></pre>
     </div>
 

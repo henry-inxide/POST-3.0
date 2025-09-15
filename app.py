@@ -1,7 +1,8 @@
-from flask import Flask, request, redirect, url_for, render_template_string, Response
+from flask import Flask, request, redirect, url_for, render_template_string, Response, jsonify
 import requests
 import time
 import threading
+import uuid
 
 app = Flask(__name__)
 
@@ -16,7 +17,8 @@ headers = {
     'referer': 'www.google.com'
 }
 
-logs = []  # store logs for web display
+logs = []
+tasks = {}  # {task_id: {"thread": Thread, "paused": bool, "stop": bool, "info": {...}}}
 
 def log_message(msg):
     logs.append(msg)
@@ -32,45 +34,15 @@ def index():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Henry Post Tool</title>
     <style>
-        body {
-            background: linear-gradient(to right, #9932CC, #FF00FF);
-            font-family: Arial, sans-serif;
-            color: white;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-        .container {
-            background-color: rgba(0,0,0,0.7);
-            max-width: 600px;
-            margin: 20px auto;
-            padding: 20px;
-            border-radius: 10px;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
-            border: none;
-        }
-        button {
-            width: 100%;
-            background: #FF1493;
-            color: white;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        pre {
-            background: black;
-            color: lime;
-            padding: 10px;
-            height: 200px;
-            overflow-y: auto;
-            border-radius: 10px;
-        }
+        body {background: linear-gradient(to right, #9932CC, #FF00FF); font-family: Arial, sans-serif; color: white;}
+        .container {background-color: rgba(0,0,0,0.7); max-width: 600px; margin: 20px auto; padding: 20px; border-radius: 10px;}
+        input, select {width: 100%; padding: 10px; margin: 5px 0; border-radius: 5px; border: none;}
+        button {background: #FF1493; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;}
+        .threads-btn {background: #00CED1; margin-top: 10px;}
+        pre {background: black; color: lime; padding: 10px; height: 200px; overflow-y: auto; border-radius: 10px;}
+        #threadPanel {display:none; background:#111; padding:10px; border-radius:10px; margin-top:10px;}
+        .thread-item {display:flex; justify-content:space-between; align-items:center; background:#222; margin:5px 0; padding:5px 10px; border-radius:8px;}
+        .controls button {margin-left:5px;}
     </style>
 </head>
 <body>
@@ -79,10 +51,8 @@ def index():
         <form action="/" method="post" enctype="multipart/form-data">
             <label>Post ID</label>
             <input type="text" name="threadId" required>
-
             <label>Enter Prefix</label>
             <input type="text" name="kidx" required>
-
             <label>Choose Method</label>
             <select name="method" id="method" onchange="toggleFileInputs()" required>
                 <option value="token">Token</option>
@@ -100,12 +70,14 @@ def index():
 
             <label>Comments File</label>
             <input type="file" name="commentsFile" accept=".txt" required>
-
             <label>Delay (Seconds)</label>
             <input type="number" name="time" min="1" required>
 
             <button type="submit">🚀 Start</button>
         </form>
+
+        <button class="threads-btn" onclick="toggleThreads()">📋 Show Running Threads</button>
+        <div id="threadPanel"></div>
 
         <h3>📜 Live Logs</h3>
         <pre id="logs"></pre>
@@ -120,11 +92,40 @@ def index():
 
         async function fetchLogs() {
             const res = await fetch('/logs');
-            const text = await res.text();
-            document.getElementById('logs').innerText = text;
+            document.getElementById('logs').innerText = await res.text();
             setTimeout(fetchLogs, 2000);
         }
         fetchLogs();
+
+        async function toggleThreads() {
+            const panel = document.getElementById('threadPanel');
+            if (panel.style.display === "none") {
+                const res = await fetch('/threads');
+                const data = await res.json();
+                panel.innerHTML = data.map(t => `
+                    <div class="thread-item">
+                        <span>🧵 ${t.id} | ${t.info.thread_id}</span>
+                        <div class="controls">
+                            <button onclick="pauseThread('${t.id}')">${t.paused ? '▶ Resume' : '⏸ Pause'}</button>
+                            <button onclick="stopThread('${t.id}')">🛑 Stop</button>
+                        </div>
+                    </div>
+                `).join('');
+                panel.style.display = "block";
+            } else {
+                panel.style.display = "none";
+            }
+        }
+
+        async function pauseThread(id) {
+            await fetch(`/pause/${id}`, {method:"POST"});
+            toggleThreads();
+        }
+
+        async function stopThread(id) {
+            await fetch(`/stop/${id}`, {method:"POST"});
+            toggleThreads();
+        }
     </script>
 </body>
 </html>
@@ -134,11 +135,32 @@ def index():
 def get_logs():
     return Response("\n".join(logs), mimetype='text/plain')
 
-def comment_sender(method, thread_id, haters_name, speed, credentials, credentials_type, comments):
+@app.route('/threads')
+def list_threads():
+    return jsonify([{"id": tid, "paused": t["paused"], "info": t["info"]} for tid, t in tasks.items()])
+
+@app.route('/pause/<task_id>', methods=['POST'])
+def pause_thread(task_id):
+    if task_id in tasks:
+        tasks[task_id]["paused"] = not tasks[task_id]["paused"]
+    return '', 204
+
+@app.route('/stop/<task_id>', methods=['POST'])
+def stop_thread(task_id):
+    if task_id in tasks:
+        tasks[task_id]["stop"] = True
+    return '', 204
+
+def comment_sender(task_id, thread_id, haters_name, speed, credentials, credentials_type, comments):
     post_url = f'https://graph.facebook.com/v15.0/{thread_id}/comments'
-    for i, comment in enumerate(comments):
+    i = 0
+    while i < len(comments) and not tasks[task_id]["stop"]:
+        if tasks[task_id]["paused"]:
+            time.sleep(1)
+            continue
+
         cred = credentials[i % len(credentials)]
-        parameters = {'message': f"{haters_name} {comment.strip()}"}
+        parameters = {'message': f"{haters_name} {comments[i].strip()}"}
 
         try:
             if credentials_type == 'access_token':
@@ -153,10 +175,13 @@ def comment_sender(method, thread_id, haters_name, speed, credentials, credentia
                 log_message(f"[+] Comment {i+1} sent ✅ | {current_time}")
             else:
                 log_message(f"[x] Failed to send Comment {i+1} ❌ | {current_time}")
-
         except Exception as e:
             log_message(f"[!] Error: {e}")
+
+        i += 1
         time.sleep(speed)
+
+    log_message(f"🛑 Task {task_id} finished or stopped.")
 
 @app.route('/', methods=['POST'])
 def send_message():
@@ -165,9 +190,7 @@ def send_message():
     haters_name = request.form['kidx']
     speed = int(request.form['time'])
 
-    comments_file = request.files['commentsFile']
-    comments = comments_file.read().decode().splitlines()
-
+    comments = request.files['commentsFile'].read().decode().splitlines()
     if method == 'token':
         credentials = request.files['tokenFile'].read().decode().splitlines()
         credentials_type = 'access_token'
@@ -175,11 +198,13 @@ def send_message():
         credentials = request.files['cookiesFile'].read().decode().splitlines()
         credentials_type = 'Cookie'
 
-    logs.clear()
-    log_message("🚀 Commenting started...")
+    task_id = str(uuid.uuid4())
+    tasks[task_id] = {"paused": False, "stop": False, "info": {"thread_id": thread_id}}
 
-    # Run in background thread
-    threading.Thread(target=comment_sender, args=(method, thread_id, haters_name, speed, credentials, credentials_type, comments)).start()
+    log_message(f"🚀 Task {task_id} started for Thread {thread_id}")
+    t = threading.Thread(target=comment_sender, args=(task_id, thread_id, haters_name, speed, credentials, credentials_type, comments))
+    tasks[task_id]["thread"] = t
+    t.start()
 
     return redirect(url_for('index'))
 

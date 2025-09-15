@@ -20,6 +20,10 @@ headers = {
 logs = []
 tasks = {}  # {task_id: {"thread": Thread, "paused": bool, "stop": bool, "info": {...}}}
 
+def log_message(msg):
+    logs.append(msg)
+    print(msg)
+    
 @app.route('/')
 def index():
     return render_template_string('''

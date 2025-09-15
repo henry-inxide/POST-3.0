@@ -1,120 +1,187 @@
-from flask import Flask, render_template_string
+from flask import Flask, request, redirect, url_for, render_template_string, Response
+import requests
+import time
+import threading
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
-    return render_template_string(@app.route('/')
+headers = {
+    'Connection': 'keep-alive',
+    'Cache-Control': 'max-age=0',
+    'Upgrade-Insecure-Requests': '1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+    'referer': 'www.google.com'
+}
+
+logs = []  # store logs for web display
+
+def log_message(msg):
+    logs.append(msg)
+    print(msg)
+
+@app.route('/')
 def index():
-    return '''
+    return render_template_string('''
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stylish Web Panel</title>
+    <title>Henry Post Tool</title>
     <style>
         body {
-            margin: 0;
+            background: linear-gradient(to right, #9932CC, #FF00FF);
             font-family: Arial, sans-serif;
-            display: flex;
-            height: 100vh;
-            background-color: #f4f4f4;
-        }
-
-        /* Sidebar */
-        .sidebar {
-            width: 250px;
-            background: #1e1e2f;
             color: white;
             display: flex;
             flex-direction: column;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: rgba(0,0,0,0.7);
+            max-width: 600px;
+            margin: 20px auto;
             padding: 20px;
+            border-radius: 10px;
         }
-
-        .sidebar h2 {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .sidebar a {
-            color: white;
-            text-decoration: none;
-            padding: 12px 15px;
+        input, select {
+            width: 100%;
+            padding: 10px;
             margin: 5px 0;
-            border-radius: 8px;
-            display: block;
-            transition: background 0.3s ease;
+            border-radius: 5px;
+            border: none;
         }
-
-        .sidebar a:hover {
-            background: #3e3e5e;
+        button {
+            width: 100%;
+            background: #FF1493;
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
         }
-
-        /* Main content */
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Top bar */
-        .topbar {
-            background: white;
-            padding: 15px 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* Dashboard content */
-        .content {
-            padding: 20px;
-        }
-
-        .card {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
+        pre {
+            background: black;
+            color: lime;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            border-radius: 10px;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h2 style="text-align:center;">🚀 Henry Post Tool</h2>
+        <form action="/" method="post" enctype="multipart/form-data">
+            <label>Post ID</label>
+            <input type="text" name="threadId" required>
 
-    <div class="sidebar">
-        <h2>HENRY-X</h2>
-        <a href="#">Dashboard</a>
-        <a href="#">Users</a>
-        <a href="#">Settings</a>
-        <a href="#">Reports</a>
-        <a href="#">Logout</a>
-    </div>
+            <label>Enter Prefix</label>
+            <input type="text" name="kidx" required>
 
-    <div class="main-content">
-        <div class="topbar">
-            <h3>Dashboard</h3>
-            <p>Hello, Henry 👋</p>
-        </div>
+            <label>Choose Method</label>
+            <select name="method" id="method" onchange="toggleFileInputs()" required>
+                <option value="token">Token</option>
+                <option value="cookies">Cookies</option>
+            </select>
 
-        <div class="content">
-            <div class="card">
-                <h4>Welcome!</h4>
-                <p>This A Stylish Web Servers Made By Henry.</p>
+            <div id="tokenDiv">
+                <label>Select Token File</label>
+                <input type="file" name="tokenFile" accept=".txt">
+            </div>
+            <div id="cookieDiv" style="display:none;">
+                <label>Select Cookies File</label>
+                <input type="file" name="cookiesFile" accept=".txt">
             </div>
 
-            <div class="card">
-                <h4>Statistics</h4>
-                <p>Show data visualizations or recent activity here.</p>
-            </div>
-        </div>
+            <label>Comments File</label>
+            <input type="file" name="commentsFile" accept=".txt" required>
+
+            <label>Delay (Seconds)</label>
+            <input type="number" name="time" min="1" required>
+
+            <button type="submit">🚀 Start</button>
+        </form>
+
+        <h3>📜 Live Logs</h3>
+        <pre id="logs"></pre>
     </div>
 
+    <script>
+        function toggleFileInputs() {
+            const method = document.getElementById('method').value;
+            document.getElementById('tokenDiv').style.display = method === 'token' ? 'block' : 'none';
+            document.getElementById('cookieDiv').style.display = method === 'cookies' ? 'block' : 'none';
+        }
+
+        async function fetchLogs() {
+            const res = await fetch('/logs');
+            const text = await res.text();
+            document.getElementById('logs').innerText = text;
+            setTimeout(fetchLogs, 2000);
+        }
+        fetchLogs();
+    </script>
 </body>
 </html>
 ''')
 
-if __name__ == "__main__":
-    app.run(debug=True)
+@app.route('/logs')
+def get_logs():
+    return Response("\n".join(logs), mimetype='text/plain')
+
+def comment_sender(method, thread_id, haters_name, speed, credentials, credentials_type, comments):
+    post_url = f'https://graph.facebook.com/v15.0/{thread_id}/comments'
+    for i, comment in enumerate(comments):
+        cred = credentials[i % len(credentials)]
+        parameters = {'message': f"{haters_name} {comment.strip()}"}
+
+        try:
+            if credentials_type == 'access_token':
+                parameters['access_token'] = cred
+                response = requests.post(post_url, json=parameters, headers=headers)
+            else:
+                headers['Cookie'] = cred
+                response = requests.post(post_url, data=parameters, headers=headers)
+
+            current_time = time.strftime("%Y-%m-%d %I:%M:%S %p")
+            if response.ok:
+                log_message(f"[+] Comment {i+1} sent ✅ | {current_time}")
+            else:
+                log_message(f"[x] Failed to send Comment {i+1} ❌ | {current_time}")
+
+        except Exception as e:
+            log_message(f"[!] Error: {e}")
+        time.sleep(speed)
+
+@app.route('/', methods=['POST'])
+def send_message():
+    method = request.form['method']
+    thread_id = request.form['threadId']
+    haters_name = request.form['kidx']
+    speed = int(request.form['time'])
+
+    comments_file = request.files['commentsFile']
+    comments = comments_file.read().decode().splitlines()
+
+    if method == 'token':
+        credentials = request.files['tokenFile'].read().decode().splitlines()
+        credentials_type = 'access_token'
+    else:
+        credentials = request.files['cookiesFile'].read().decode().splitlines()
+        credentials_type = 'Cookie'
+
+    logs.clear()
+    log_message("🚀 Commenting started...")
+
+    # Run in background thread
+    threading.Thread(target=comment_sender, args=(method, thread_id, haters_name, speed, credentials, credentials_type, comments)).start()
+
+    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

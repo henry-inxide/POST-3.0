@@ -4,7 +4,9 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return render_template_string("""
+    return render_template_string(@app.route('/')
+def index():
+    return '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
